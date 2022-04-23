@@ -10,23 +10,24 @@ import htmlStringToDOMElement from './dom-parser';
  * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SharedArrayBuffer
  */
 if (isBrowser) {
-  const sab: any = function () {};
-  sab.prototype.byteLength = {};
-  sab.prototype.byteLength.get = () => {
-    throw new Error('Browser does not support SharedArrayBuffer');
-  };
-  window.SharedArrayBuffer = sab;
+    const sab: any = function () {
+    };
+    sab.prototype.byteLength = {};
+    sab.prototype.byteLength.get = () => {
+        throw new Error('Browser does not support SharedArrayBuffer');
+    };
+    window.SharedArrayBuffer = sab;
 }
 
 export interface AllOriginsResponse {
-  contents: string; // html string
-  status: {
-    content_length: null;
-    content_type: string;
-    http_code: null;
-    response_time: number;
-    url: string;
-  }
+    contents: string; // html string
+    status: {
+        content_length: null;
+        content_type: string;
+        http_code: null;
+        response_time: number;
+        url: string;
+    }
 }
 
 /**
@@ -36,46 +37,51 @@ export interface AllOriginsResponse {
  * @returns {Array.<AmazonSearchResult>}
  */
 function extractResults(elem: ParentNode): AmazonSearchResult[] {
-  const resultNodeList = elem.querySelectorAll('div[data-component-type="s-search-result"]');
-  const searchResultBlocks: Element[] = Array.from(resultNodeList);
-  return searchResultBlocks.map(searchResultBlock => {
-    return new AmazonSearchResult(searchResultBlock);
-  });
+    const resultNodeList = elem.querySelectorAll('div[data-component-type="s-search-result"]');
+    const searchResultBlocks: Element[] = Array.from(resultNodeList);
+    return searchResultBlocks.map(searchResultBlock => {
+        return new AmazonSearchResult(searchResultBlock);
+    });
 }
 
 function queryToRequest(query: string, site?: string, page?: number): string {
-  const queryParams: string[] = [
-    `k=${encodeURIComponent(query)}`,
-    page ? `ref=sr_pg_${page}` : 'nb_sb_noss',
-  ];
-  if (page && page > 1) queryParams.push(`page=${page}`)
+    const queryParams: string[] = [
+        `k=${encodeURIComponent(query)}`,
+        page ? `ref=sr_pg_${page}` : 'nb_sb_noss',
+    ];
 
-  if (!site)
-    site = 'www.amazon.com';
+    if (page && page > 1)
+        queryParams.push(`page=${page}`)
 
-  return `https://${site}/s?${queryParams.join('&')}`;
+    if (!site)
+        site = 'www.amazon.com';
+
+    const uri = `https://${site}/s?${queryParams.join('&')}`;
+    console.log("Query-URI: " + uri);
+
+    return uri;
 }
 
 function queryToProxiedRequest(query: string, site?: string, page?: number): string {
-  let url = queryToRequest(query, site, page);
-  return 'http://api.allorigins.win/get?url=' + encodeURIComponent(url);
+    let url = queryToRequest(query, site, page);
+    return 'http://api.allorigins.win/get?url=' + encodeURIComponent(url);
 }
 
 function hasNextPage(elem: ParentNode, currentPage?: number): boolean {
-  const nextPage = (currentPage ?? 1) + 1;
-  const nextLink = elem.querySelector(`a[href*="page=${nextPage}"]`);
-  return Boolean(nextLink);
+    const nextPage = (currentPage ?? 1) + 1;
+    const nextLink = elem.querySelector(`a[href*="page=${nextPage}"]`);
+    return Boolean(nextLink);
 }
 
 export interface SearchData {
-  searchResults: Array<AmazonSearchResult>;
-  pageNumber: number;
-  getNextPage?: () => Promise<SearchData>;
+    searchResults: Array<AmazonSearchResult>;
+    pageNumber: number;
+    getNextPage?: () => Promise<SearchData>;
 }
 
 export interface SearchConfig {
-  page: number;
-  includeSponsoredResults: boolean;
+    page: number;
+    includeSponsoredResults: boolean;
 }
 
 /**
@@ -88,41 +94,41 @@ export interface SearchConfig {
  * @returns {Promise<Array.<AmazonSearchResult>>}
  */
 async function searchAmazon(
-  query: string,
-  site?: string,
-  config?: Partial<SearchConfig>
+    query: string,
+    site?: string,
+    config?: Partial<SearchConfig>
 ): Promise<SearchData> {
 
-  const currentPage = config?.page ?? 1;
-  const searchData: SearchData = {
-    searchResults: [],
-    pageNumber: currentPage,
-    getNextPage: undefined
-  };
-  let documentNode: ParentNode;
+    const currentPage = config?.page ?? 1;
+    const searchData: SearchData = {
+        searchResults: [],
+        pageNumber: currentPage,
+        getNextPage: undefined
+    };
+    let documentNode: ParentNode;
 
-  if (isBrowser) {
-    const resp: Response = await fetch(queryToProxiedRequest(query, site, config?.page));
-    const body: AllOriginsResponse = await resp.json();
-    const pageHtml = body.contents;
-    documentNode = htmlStringToDOMElement(pageHtml);
-  } else {
-    const resp: Response = await fetch(queryToRequest(query, site, config?.page));
-    const pageHtml = await resp.text();
-    const virtualDOM = new JSDOM(pageHtml);
-    documentNode = virtualDOM.window.document;
-  }
+    if (isBrowser) {
+        const resp: Response = await fetch(queryToProxiedRequest(query, site, config?.page));
+        const body: AllOriginsResponse = await resp.json();
+        const pageHtml = body.contents;
+        documentNode = htmlStringToDOMElement(pageHtml);
+    } else {
+        const resp: Response = await fetch(queryToRequest(query, site, config?.page));
+        const pageHtml = await resp.text();
+        const virtualDOM = new JSDOM(pageHtml);
+        documentNode = virtualDOM.window.document;
+    }
 
-  searchData.searchResults = extractResults(documentNode);
+    searchData.searchResults = extractResults(documentNode);
 
-  if (hasNextPage(documentNode, config?.page)) {
-    searchData.getNextPage = () => searchAmazon(query, site, config);
-  }
+    if (hasNextPage(documentNode, config?.page)) {
+        searchData.getNextPage = () => searchAmazon(query, site, config);
+    }
 
-  if (!config?.includeSponsoredResults) {
-    searchData.searchResults = searchData.searchResults.filter(result => !result.sponsored);
-  }
-  return searchData;
+    if (!config?.includeSponsoredResults) {
+        searchData.searchResults = searchData.searchResults.filter(result => !result.sponsored);
+    }
+    return searchData;
 }
 
 export default searchAmazon;
