@@ -43,18 +43,21 @@ function extractResults(elem: ParentNode): AmazonSearchResult[] {
   });
 }
 
-function queryToRequest(query: string, page?: number): string {
+function queryToRequest(query: string, site?: string, page?: number): string {
   const queryParams: string[] = [
     `k=${encodeURIComponent(query)}`,
     page ? `ref=sr_pg_${page}` : 'nb_sb_noss',
   ];
   if (page && page > 1) queryParams.push(`page=${page}`)
 
-  return `https://www.amazon.com/s?${queryParams.join('&')}`;
+  if (!site)
+    site = 'www.amazon.com';
+
+  return `https://${site}/s?${queryParams.join('&')}`;
 }
 
-function queryToProxiedRequest(query: string, page?: number): string {
-  let url = queryToRequest(query, page);
+function queryToProxiedRequest(query: string, site?: string, page?: number): string {
+  let url = queryToRequest(query, site, page);
   return 'http://api.allorigins.win/get?url=' + encodeURIComponent(url);
 }
 
@@ -80,11 +83,13 @@ export interface SearchConfig {
  * @description Scrapes the first page of Amazon search results
  * @public
  * @param {string} query - What you'd type in to the Amazon search bar
+ * @param {site} - Which site to search on (default: www.amazon.com)
  * @param {boolean=} includeSponsoredResults - Filters sponsored results by default
  * @returns {Promise<Array.<AmazonSearchResult>>}
  */
 async function searchAmazon(
   query: string,
+  site?: string,
   config?: Partial<SearchConfig>
 ): Promise<SearchData> {
 
@@ -97,12 +102,12 @@ async function searchAmazon(
   let documentNode: ParentNode;
 
   if (isBrowser) {
-    const resp: Response = await fetch(queryToProxiedRequest(query, config?.page));
+    const resp: Response = await fetch(queryToProxiedRequest(query, site, config?.page));
     const body: AllOriginsResponse = await resp.json();
     const pageHtml = body.contents;
     documentNode = htmlStringToDOMElement(pageHtml);
   } else {
-    const resp: Response = await fetch(queryToRequest(query, config?.page));
+    const resp: Response = await fetch(queryToRequest(query, site, config?.page));
     const pageHtml = await resp.text();
     const virtualDOM = new JSDOM(pageHtml);
     documentNode = virtualDOM.window.document;
@@ -111,7 +116,7 @@ async function searchAmazon(
   searchData.searchResults = extractResults(documentNode);
 
   if (hasNextPage(documentNode, config?.page)) {
-    searchData.getNextPage = () => searchAmazon(query, config);
+    searchData.getNextPage = () => searchAmazon(query, site, config);
   }
 
   if (!config?.includeSponsoredResults) {
